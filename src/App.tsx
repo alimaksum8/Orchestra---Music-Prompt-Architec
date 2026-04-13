@@ -23,6 +23,7 @@ const MODELS = [
   "gemini-3-flash-preview",
   "gemini-2.0-flash",
   "gemini-1.5-flash",
+  "gemini-1.5-flash-latest",
   "gemini-1.5-flash-8b"
 ];
 
@@ -191,13 +192,16 @@ export default function App() {
       } catch (error: any) {
         console.warn(`Model ${modelName} gagal (dengan search=${useSearch}):`, error);
         lastError = error;
-        if (error?.message?.includes("429") || error?.status === 429) continue;
-        else break; // Jika error bukan kuota (misal syntax), jangan lanjut loop
+        // Lanjut ke model berikutnya jika kuota habis (429) atau model tidak ditemukan (404)
+        if (error?.message?.includes("429") || error?.status === 429 || error?.message?.includes("404") || error?.status === 404) {
+          continue;
+        }
+        break; // Berhenti jika error fatal lainnya (misal: API Key salah)
       }
     }
 
-    // Tahap 2: Jika gagal karena kuota Search, coba lagi SEMUA model TANPA Search
-    if (useSearch && (lastError?.message?.includes("429") || lastError?.status === 429)) {
+    // Tahap 2: Jika gagal karena kuota Search atau model tidak mendukung Search, coba lagi TANPA Search
+    if (useSearch && (lastError?.message?.includes("429") || lastError?.status === 429 || lastError?.message?.includes("404") || lastError?.status === 404)) {
       console.log("Mencoba fallback tanpa fitur Google Search...");
       for (const modelName of MODELS) {
         try {
