@@ -19,6 +19,12 @@ import {
 const API_KEY = process.env.GEMINI_API_KEY || "";
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+const MODELS = [
+  "gemini-3-flash-preview",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash"
+];
+
 const OPTIONS = {
   genres: [
     "Full Symphony Orchestra", "Orchestra Kejut (Subito/Surprise)", "Orchestra Pop", "Orchestra Rock", "Orchestra Dangdut",
@@ -155,6 +161,42 @@ export default function App() {
     });
   };
 
+  const generateWithFallback = async (
+    prompt: string, 
+    systemInstruction: string, 
+    useSearch: boolean = false
+  ) => {
+    let lastError: any = null;
+
+    for (const modelName of MODELS) {
+      try {
+        const config: any = {
+          systemInstruction,
+          responseMimeType: "application/json",
+        };
+
+        if (useSearch) {
+          config.tools = [{ googleSearch: {} }];
+        }
+
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config
+        });
+
+        return { data: JSON.parse(response.text), modelUsed: modelName };
+      } catch (error: any) {
+        console.warn(`Model ${modelName} failed:`, error);
+        lastError = error;
+        // If it's a 429, try next model. Otherwise, if it's a critical error, maybe stop?
+        // But user wants fallback for quota, so we continue.
+        continue;
+      }
+    }
+    throw lastError;
+  };
+
   const analyzeYoutubeRef = async () => {
     if (!ytLink.trim()) return showToast("Masukkan link YouTube terlebih dahulu!", 'error');
     
@@ -178,29 +220,22 @@ export default function App() {
     Pilih maksimal 2-3 opsi per kategori yang paling akurat menggambarkan referensi tersebut.`;
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: "user", parts: [{ text: `Analisis link YouTube ini dan pilihkan opsi orkestrasi yang tepat: ${ytLink}` }] }],
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          tools: [{ googleSearch: {} }]
-        }
-      });
-
-      const rawText = response.text;
-      const analysis = JSON.parse(rawText);
+      const { data: analysis, modelUsed } = await generateWithFallback(
+        `Analisis link YouTube ini dan pilihkan opsi orkestrasi yang tepat: ${ytLink}`,
+        systemInstruction,
+        true
+      );
       
       setSelected(prev => ({
         ...prev,
         ...analysis
       }));
 
-      showToast("Analisis referensi berhasil diterapkan!", 'success');
+      showToast(`Analisis berhasil (via ${modelUsed})`, 'success');
     } catch (error: any) {
       console.error("YouTube Analysis Error:", error);
       if (error?.message?.includes("429") || error?.status === 429) {
-        showToast("Batas kuota API tercapai (Rate Limit). Silakan tunggu beberapa menit.", 'error');
+        showToast("Semua model mencapai batas kuota. Silakan tunggu beberapa menit.", 'error');
       } else {
         showToast("Gagal menganalisis link. Pastikan link benar atau coba lagi nanti.", 'error');
       }
@@ -233,17 +268,11 @@ export default function App() {
     Tempo/Teknik: ${selected.tempos.join(', ')}`;
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json"
-        }
-      });
+      const { data, modelUsed } = await generateWithFallback(
+        userPrompt,
+        systemInstruction
+      );
 
-      const rawText = response.text;
-      const data = JSON.parse(rawText);
       setResult(data);
       
       saveToHistory({
@@ -252,11 +281,11 @@ export default function App() {
         formattedLyrics: data.formattedLyrics
       });
 
-      showToast("Komposisi berhasil dibuat!", 'success');
+      showToast(`Komposisi berhasil (via ${modelUsed})`, 'success');
     } catch (error: any) {
       console.error("Generation Error:", error);
       if (error?.message?.includes("429") || error?.status === 429) {
-        showToast("Batas kuota API tercapai. Silakan tunggu sebentar.", 'error');
+        showToast("Semua model mencapai batas kuota. Silakan tunggu sebentar.", 'error');
       } else {
         showToast(`Gagal memproses data. Silakan coba lagi.`, 'error');
       }
