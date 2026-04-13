@@ -197,9 +197,13 @@ export default function App() {
       }));
 
       showToast("Analisis referensi berhasil diterapkan!", 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error("YouTube Analysis Error:", error);
-      showToast("Gagal menganalisis link. Coba lagi nanti.", 'error');
+      if (error?.message?.includes("429") || error?.status === 429) {
+        showToast("Batas kuota API tercapai (Rate Limit). Silakan tunggu beberapa menit.", 'error');
+      } else {
+        showToast("Gagal menganalisis link. Pastikan link benar atau coba lagi nanti.", 'error');
+      }
     } finally {
       setYtLoading(false);
     }
@@ -249,9 +253,13 @@ export default function App() {
       });
 
       showToast("Komposisi berhasil dibuat!", 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Generation Error:", error);
-      showToast(`Gagal memproses data. Silakan coba lagi.`, 'error');
+      if (error?.message?.includes("429") || error?.status === 429) {
+        showToast("Batas kuota API tercapai. Silakan tunggu sebentar.", 'error');
+      } else {
+        showToast(`Gagal memproses data. Silakan coba lagi.`, 'error');
+      }
     } finally {
       setLoading(false);
     }
