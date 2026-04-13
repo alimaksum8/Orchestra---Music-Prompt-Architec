@@ -22,7 +22,8 @@ const ai = new GoogleGenAI({ apiKey: API_KEY });
 const MODELS = [
   "gemini-3-flash-preview",
   "gemini-2.0-flash",
-  "gemini-1.5-flash"
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b"
 ];
 
 const OPTIONS = {
