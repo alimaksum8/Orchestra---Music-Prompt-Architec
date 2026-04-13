@@ -168,6 +168,7 @@ export default function App() {
   ) => {
     let lastError: any = null;
 
+    // Tahap 1: Coba semua model dengan fitur yang diminta (termasuk Search jika ada)
     for (const modelName of MODELS) {
       try {
         const config: any = {
@@ -185,15 +186,37 @@ export default function App() {
           config
         });
 
-        return { data: JSON.parse(response.text), modelUsed: modelName };
+        return { data: JSON.parse(response.text), modelUsed: modelName, searchUsed: useSearch };
       } catch (error: any) {
-        console.warn(`Model ${modelName} failed:`, error);
+        console.warn(`Model ${modelName} gagal (dengan search=${useSearch}):`, error);
         lastError = error;
-        // If it's a 429, try next model. Otherwise, if it's a critical error, maybe stop?
-        // But user wants fallback for quota, so we continue.
-        continue;
+        if (error?.message?.includes("429") || error?.status === 429) continue;
+        else break; // Jika error bukan kuota (misal syntax), jangan lanjut loop
       }
     }
+
+    // Tahap 2: Jika gagal karena kuota Search, coba lagi SEMUA model TANPA Search
+    if (useSearch && (lastError?.message?.includes("429") || lastError?.status === 429)) {
+      console.log("Mencoba fallback tanpa fitur Google Search...");
+      for (const modelName of MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [{ role: "user", parts: [{ text: prompt + " (Lakukan analisis tanpa alat pencarian, gunakan pengetahuan internal Anda jika link ini populer)" }] }],
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+            }
+          });
+          return { data: JSON.parse(response.text), modelUsed: modelName, searchUsed: false };
+        } catch (error: any) {
+          console.warn(`Model ${modelName} gagal (tanpa search):`, error);
+          lastError = error;
+          continue;
+        }
+      }
+    }
+
     throw lastError;
   };
 
@@ -220,7 +243,7 @@ export default function App() {
     Pilih maksimal 2-3 opsi per kategori yang paling akurat menggambarkan referensi tersebut.`;
 
     try {
-      const { data: analysis, modelUsed } = await generateWithFallback(
+      const { data: analysis, modelUsed, searchUsed } = await generateWithFallback(
         `Analisis link YouTube ini dan pilihkan opsi orkestrasi yang tepat: ${ytLink}`,
         systemInstruction,
         true
@@ -231,7 +254,7 @@ export default function App() {
         ...analysis
       }));
 
-      showToast(`Analisis berhasil (via ${modelUsed})`, 'success');
+      showToast(`Analisis berhasil (via ${modelUsed}${searchUsed ? '' : ' - No Search'})`, 'success');
     } catch (error: any) {
       console.error("YouTube Analysis Error:", error);
       if (error?.message?.includes("429") || error?.status === 429) {
